@@ -27,7 +27,7 @@ and the following instance attributes:
 >>>
 >>> test_video_command = CreateTestVideo(inputfile="/dev/zero", outputfile="/tmp/testvideo.mpeg")
 >>> print(test_video_command)
-... CreateTestVideo(/usr/bin/ffmpeg -t 60 -s 640x480 -f rawvideo -pix_fmt rgb24 -r 25 -i /dev/zero /tmp/testvideo.mpeg)
+... "CreateTestVideo(/usr/bin/ffmpeg -t 60 -s 640x480 -f rawvideo -pix_fmt rgb24 -r 25 -i /dev/zero /tmp/testvideo.mpeg)"
 >>> test_video_command.run()
 ... (( VERBOSE OUTPUT ))
 >>> ls /tmp
