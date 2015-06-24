@@ -16,6 +16,24 @@ and the following instance attributes:
 - `inputfile` -> the fully qualified path to the input file to edit
 - `*outputfiles` -> one or more output files to apply the command to
 
+#### usage
+
+```python
+>>> from ffmpeg_wraper import ffmpeg_wrapper
+>>>
+>>> class CreateTestVideo(ffmpeg_wrapper.FFMPEGCommand):
+>>>     # creates a 60 second 640x480 black video (25 fps)
+>>>     global_options = "-t 60 -s 640x480 -f rawvideo -pix_fmt rgb24 -r 25"
+>>>
+>>> test_video_command = CreateTestVideo(inputfile="/dev/zero", outputfile="/tmp/testvideo.mpeg")
+>>> print(test_video_command)
+... CreateTestVideo(/usr/bin/ffmpeg -t 60 -s 640x480 -f rawvideo -pix_fmt rgb24 -r 25 -i /dev/zero /tmp/testvideo.mpeg)
+>>> test_video_command.run()
+... (( VERBOSE OUTPUT ))
+>>> ls /tmp
+... testvideo.mpeg
+```
+
 for more information see the example command `CreateTestVideo` which creates a blank video file and is incredibly usefull for testing commands.
 
 ## NOTICE
