@@ -1,37 +1,68 @@
-# /ffmpeg_wrapper/ffmpeg.py
+# ffmpeg_wrapper/ffmpeg_wrapper.py
 # author: andrew young
+# email: ayoung@thewulf.org
 
 import os
 import six
 import shlex
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, DEVNULL
+from threading import Thread
 
 
 if six.PY2:
-	FileNotFoundError = OSError
+    FileNotFoundError = OSError
 
 
 class SystemCommandError(Exception): pass
 
 
 class SystemCommand(object):
-    """utility class to wrap the Popen object in
-    a convenient interface.
+    """ utility class to wrap the Popen object in a convenient interface.
+    supports notification of observers when a process has finished.
     """
     wraps = Popen
 
-    def __init__(self, command):
+    def __init__(self, command, observers=None):
         self.command = command
+        self.observers = observers
         self.process = None
 
-    def run(self):
-        _input = self.process
-        for command in self.command.split("|"):
-            command = shlex.split(command)
-            _input = self.process.stdout if\
-                hasattr(self.process, "stdout") else None
-            self.process = self.wraps(command, stdin=_input, stdout=PIPE)
-        return self.process
+    def run(self, wait=False):
+        """ runs the command in a thread
+        """
+        def in_background():
+            _input = self.process
+            for command in self.command.split("|"):
+                command = shlex.split(command)
+                _input = self.process.stdout if self.process else None
+                stdout = PIPE if _input else DEVNULL
+                self.process = self.wraps(command, stdin=_input, stderr= stdout,
+                    stdout=stdout)
+                self.process.communicate()
+            self.notify_observers()
+            return self.process
+
+        thread = Thread(target=in_background)
+        thread.start()
+
+        if wait:
+            thread.join()
+
+        return thread
+
+    def kill(self):
+        try:
+            self.process.kill()
+        except ProcessLookupError:
+            pass
+        else:
+            # just to be sure the observers are notified
+            self.notify_observers()
+
+    def notify_observers(self):
+        if self.observers:
+            for observer in self.observers:
+                observer.recieve_notification(self)
 
     def __getattr__(self, other):
         return getattr(self.process, other)
@@ -42,8 +73,8 @@ class SystemCommand(object):
 
 
 class CheckFFMPEGMeta(type):
-    """a metaclass that checks for the existance
-    of ffmpeg before running ffmpeg commands
+    """ a metaclass that checks for the existance of ffmpeg before running ffmpeg
+    commands
     """
     def __new__(cls, name, bases, dct):
         super_new = super(CheckFFMPEGMeta, cls).__new__
@@ -65,55 +96,61 @@ class CheckFFMPEGMeta(type):
 
 
 class FFMPEGCommand(six.with_metaclass(CheckFFMPEGMeta)):
-    """utility class to wrap arbitrary python commands
-    into ffmpeg commands. see http://ffmpeg.org/ffmpeg.html
-    for usage
-    `{ff} {glargs} {inargs} -i {infile} {outargs} {outfile}`
+    """utility class to wrap arbitrary python commands into ffmpeg commands.
+    see http://ffmpeg.org/ffmpeg.html for usage
     """
     _wraps = SystemCommand
     which_ffmpeg = None
     global_options = None
     inputfile_options = None
+    acodec_options = None
+    vcodec_options = None
     outputfile_options = None
 
-    def __init__(self, inputfile, *outputfiles):
+    def __init__(self, inputfile, outputfile):
         if os.path.exists(inputfile):
             self.inputfile = inputfile
         else:
             raise FileNotFoundError("inputfile {0} not found!".format(inputfile))
-        self.outputfiles = outputfiles
-        for outputfile in self.outputfiles:
-            if not os.path.exists(os.path.dirname(outputfile)):
-                os.makedirs(os.path.dirname(self.outputfile))
+        self.outputfile = outputfile
+        if not os.path.exists(os.path.dirname(self.outputfile)):
+            os.makedirs(os.path.dirname(self.outputfile))
 
         self.command = self._format_command()
-        self.process = self._wraps(self.command)
+        self.process = self._wraps(self.command, [self, ])
 
     def _format_command(self):
         formatted_in = "{ff}".format(ff=self.which_ffmpeg)
+        formatted_out = ""
         if self.global_options:
             formatted_in += " {glargs}".format(glargs=self.global_options)
         if self.inputfile_options:
             formatted_in += " {inargs}".format(inargs=self.inputfile_options)
         formatted_in += " -i {infile}".format(infile=self.inputfile)
+        if self.vcodec_options:
+            formatted_in += " -codec:v {vcargs}".format(vcargs=self.vcodec_options)
+        if self.acodec_options:
+            formatted_in += " -codec:a {acargs}".format(acargs=self.acodec_options)
         if self.outputfile_options:
-            formatted_out = " ".join(
-                ["{outargs} {outfile}".format(
-                    outargs=self.outputfile_options,
-                    outfile=out) for out in self.outputfiles])
-        else:
-            formatted_out = " ".join(out for out in self.outputfiles)
+            formatted_out += "{outargs} ".format(outargs=self.outputfile_options)
+        formatted_out += "{outfile}".format(outfile=self.outputfile)
         return " ".join((formatted_in, formatted_out))
 
     def __enter__(self):
-        """context mgmt
+        """ context mgmt
         """
-        return self.run()
+        process = self.run()
+        return process
 
-    def __exit__(self):
-        """cleanup after failures etc...
+    def __exit__(self, *args, **kwargs):
+        """ cleanup after failures etc...
         """
         return self.kill()
+
+    def recieve_notification(self, process):
+        """ this should be implemented in a subclass
+        """
+        print(process, "completed!")
 
     def __repr__(self):
         return "{0}({1})".format(self.__class__.__name__, self.command)
@@ -121,8 +158,4 @@ class FFMPEGCommand(six.with_metaclass(CheckFFMPEGMeta)):
 
     def __getattr__(self, other):
         return getattr(self.process, other)
-
-
-class CreateTestVideo(FFMPEGCommand):
-    global_options = "-t 60 -s 640x480 -f rawvideo -pix_fmt rgb24 -r 25"
 
