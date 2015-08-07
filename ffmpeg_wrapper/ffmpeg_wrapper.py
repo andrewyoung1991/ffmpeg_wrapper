@@ -57,12 +57,12 @@ class SystemCommand(object):
             pass
         else:
             # just to be sure the observers are notified
-            self.notify_observers()
+            self.notify_observers(killed=True)
 
-    def notify_observers(self):
+    def notify_observers(self, killed=False):
         if self.observers:
             for observer in self.observers:
-                observer.recieve_notification(self)
+                observer.recieve_notification(self, killed)
 
     def __getattr__(self, other):
         return getattr(self.process, other)
@@ -95,7 +95,14 @@ class CheckFFMPEGMeta(type):
     __str__ = __repr__
 
 
-class FFMPEGCommand(six.with_metaclass(CheckFFMPEGMeta)):
+class ObserverMixin(object):
+    def recieve_notification(self, process, killed):
+        """ this should be implemented in a subclass
+        """
+        print(process, "completed!" if not killed else "killed!")
+
+
+class FFMPEGCommand(six.with_metaclass(CheckFFMPEGMeta, ObserverMixin)):
     """utility class to wrap arbitrary python commands into ffmpeg commands.
     see http://ffmpeg.org/ffmpeg.html for usage
     """
@@ -146,11 +153,6 @@ class FFMPEGCommand(six.with_metaclass(CheckFFMPEGMeta)):
         """ cleanup after failures etc...
         """
         return self.kill()
-
-    def recieve_notification(self, process):
-        """ this should be implemented in a subclass
-        """
-        print(process, "completed!")
 
     def __repr__(self):
         return "{0}({1})".format(self.__class__.__name__, self.command)
